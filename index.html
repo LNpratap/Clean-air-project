@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Clean Air Project — Videos</title>
+
+<style>
+  :root{
+    --primary-blue:#0056b3;
+    --accent:#28a745;
+    --bg:#f4f6f9;
+    --card-shadow: rgba(0,0,0,0.08);
+    --text:#222;
+    --muted:#666;
+  }
+
+  body{
+    margin:0;
+    font-family:Inter,system-ui,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+
+  header{
+    background:var(--primary-blue);
+    color:#fff;
+    padding:14px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    box-shadow:0 4px 10px var(--card-shadow);
+  }
+
+  .brand{
+    font-weight:700;
+    font-size:20px;
+  }
+
+  .btn{
+    border:0;
+    padding:8px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+
+  .btn.login{ background:var(--accent); color:#fff; }
+  .btn.upload{ background:#043b83; color:#fff; }
+
+  .container{
+    max-width:1000px;
+    margin:28px auto;
+    padding:0 18px;
+  }
+
+  #adminPanel{
+    display:none;
+    background:#fff;
+    border-radius:12px;
+    padding:14px;
+    box-shadow:0 6px 20px var(--card-shadow);
+    margin-bottom:18px;
+    border-top:4px solid var(--primary-blue);
+  }
+
+  .notice{
+    background:#fff7c0;
+    padding:10px;
+    border-radius:8px;
+    margin-bottom:12px;
+    color:#6a5600;
+  }
+
+  h1.section{
+    margin:0 0 8px;
+    font-size:20px;
+    color:#0b6b2f;
+  }
+
+  /* GRID */
+  .videos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 18px;
+  }
+
+  .video-card {
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    transition: transform 0.2s ease, box-shadow 0.3s ease;
+  }
+
+  .video-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 26px rgba(0,0,0,0.12);
+  }
+
+  video,
+  iframe {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    background:#000;
+    border:0;
+  }
+
+  .delete-btn{
+    background:#d63939;
+    color:#fff;
+    border-radius:8px;
+    padding:6px 10px;
+    border:none;
+    cursor:pointer;
+    margin:10px;
+  }
+
+  .small{
+    color:var(--muted);
+    font-size:13px;
+    padding:8px;
+  }
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore-compat.js"></script>
+
+</head>
+<body>
+
+<header>
+  <div class="brand">🌬️ Clean Air Project — Videos</div>
+  <button class="btn login" id="loginBtn">Admin Login</button>
+</header>
+
+<div class="container">
+
+  <div id="status" class="notice" style="display:none"></div>
+
+  <div id="adminPanel">
+    <h1 class="section">Admin Upload Portal</h1>
+
+    <p class="small"><b>Video Title</b></p>
+    <input type="text" id="videoTitle" placeholder="Enter video title" style="width:100%; padding:8px; margin-bottom:10px">
+
+    <p class="small"><b>YouTube URL (optional)</b></p>
+    <input type="text" id="youtubeURL" placeholder="Paste YouTube link" style="width:100%; padding:8px; margin-bottom:10px">
+    <p class="small">If you paste a YouTube link, the file upload is ignored.</p>
+
+    <p class="small"><b>Upload MP4 Video</b></p>
+    <input type="file" id="uploadInput" accept="video/*" style="margin-bottom:10px">
+
+    <button class="btn upload" id="uploadBtn">Upload Video</button>
+
+    <p class="small">Uploads go to Cloudinary. Firestore stores the video list so everyone can see them.</p>
+  </div>
+
+  <h1 class="section">Featured Educational Videos</h1>
+  <div id="videosContainer" class="videos-grid"></div>
+</div>
+
+<script>
+/* ------------------------- CONFIG ------------------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDuZTgTY5AeOyd-5n7sGgM2hf1Qw2NJL-A",
+  authDomain: "clean-air-project-allenps.firebaseapp.com",
+  projectId: "clean-air-project-allenps",
+  storageBucket: "clean-air-project-allenps.firebasestorage.app",
+  messagingSenderId: "62865972648",
+  appId: "1:62865972648:web:b3448c1e3e486ab3aa919d"
+};
+
+const CLOUD_NAME = "dlg33imal";
+const UNSIGNED_UPLOAD_PRESET = "unsigned_videos";
+
+const ADMIN_EMAIL = "admin@gmail.com";
+const ADMIN_PASS = "123456";
+
+/* -------------------- INIT FIREBASE ----------------------- */
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* ------------------------- UI ----------------------------- */
+const loginBtn = document.getElementById("loginBtn");
+const adminPanel = document.getElementById("adminPanel");
+const uploadInput = document.getElementById("uploadInput");
+const uploadBtn = document.getElementById("uploadBtn");
+const statusBox = document.getElementById("status");
+const videosContainer = document.getElementById("videosContainer");
+
+let isAdmin = false;
+
+function showStatus(msg){
+  statusBox.style.display = msg ? "block" : "none";
+  statusBox.textContent = msg;
+}
+
+/* ----------------------- LOGIN ----------------------------- */
+loginBtn.addEventListener("click", () => {
+  const email = prompt("Admin email:");
+  const pass = prompt("Password:");
+  if(email === ADMIN_EMAIL && pass === ADMIN_PASS){
+    isAdmin = true;
+    adminPanel.style.display = "block";
+    loginBtn.style.display = "none";
+    showStatus("Admin mode enabled — you can upload and delete videos.");
+    loadVideos();
+  } else {
+    alert("Incorrect login.");
+  }
+});
+
+/* ---------------------- UPLOAD ----------------------------- */
+uploadBtn.addEventListener("click", async () => {
+  const title = document.getElementById("videoTitle").value.trim();
+  const youtubeLink = document.getElementById("youtubeURL").value.trim();
+  const file = uploadInput.files[0];
+
+  if (!title) return alert("Please enter a video title.");
+
+  /* ---------- CASE 1: YOUTUBE LINK ---------- */
+  if (youtubeLink) {
+    await db.collection("videos").add({
+      type: "youtube",
+      title: title,
+      url: youtubeLink,
+      ts: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    showStatus("YouTube video added!");
+    uploadInput.value = "";
+    document.getElementById("youtubeURL").value = "";
+    document.getElementById("videoTitle").value = "";
+    loadVideos();
+    return;
+  }
+
+  /* ---------- CASE 2: MP4 UPLOAD ---------- */
+  if (!file) return alert("Select a video or paste a YouTube link.");
+
+  showStatus("Uploading to Cloudinary… Please wait.");
+
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", UNSIGNED_UPLOAD_PRESET);
+
+    const resp = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
+      { method: "POST", body: form }
+    );
+
+    const result = await resp.json();
+    if(result.error) throw new Error(result.error.message);
+
+    const videoURL =
+      `https://res.cloudinary.com/${CLOUD_NAME}/video/upload/f_mp4/${result.public_id}.mp4`;
+
+    await db.collection("videos").add({
+      type: "mp4",
+      title: title,
+      url: videoURL,
+      public_id: result.public_id,
+      ts: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    showStatus("Upload complete!");
+    uploadInput.value = "";
+    document.getElementById("videoTitle").value = "";
+    loadVideos();
+
+  } catch(err) {
+    alert("Upload failed: " + err.message);
+    showStatus("");
+  }
+});
+
+/* ---------------------- LOAD VIDEOS ------------------------- */
+async function loadVideos(){
+  videosContainer.innerHTML = "";
+  showStatus("Loading videos…");
+
+  try {
+    const snap = await db.collection("videos").orderBy("ts", "desc").get();
+    snap.forEach(doc => addVideoCard({ id: doc.id, ...doc.data() }));
+    showStatus("");
+  } catch(err){
+    showStatus("Error loading videos. Check Firestore rules.");
+  }
+}
+
+/* ---------------------- VIDEO CARD -------------------------- */
+function addVideoCard(doc){
+  const card = document.createElement("div");
+  card.className = "video-card";
+
+  let videoHTML = "";
+
+  if (doc.type === "youtube") {
+    const embed = doc.url.replace("watch?v=", "embed/");
+    videoHTML = `<iframe src="${embed}" allowfullscreen></iframe>`;
+  } else {
+    videoHTML = `
+      <video controls muted playsinline preload="metadata">
+        <source src="${doc.url}" type="video/mp4">
+      </video>
+    `;
+  }
+
+  card.innerHTML = `
+    ${videoHTML}
+    <div class="small"><b>${doc.title}</b></div>
+  `;
+
+  if(isAdmin){
+    const del = document.createElement("button");
+    del.className = "delete-btn";
+    del.textContent = "Delete";
+    del.onclick = async () => {
+      if(!confirm("Delete this video?")) return;
+      await db.collection("videos").doc(doc.id).delete();
+      card.remove();
+      showStatus("Deleted.");
+    };
+    card.appendChild(del);
+  }
+
+  videosContainer.appendChild(card);
+}
+
+/* ---------------------- START ------------------------------- */
+window.addEventListener("load", loadVideos);
+</script>
+
+</body>
+</html>
